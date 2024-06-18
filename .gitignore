@@ -1,0 +1,4 @@
+
+*.Rdata
+R/.Rhistory
+*.pdf

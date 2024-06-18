@@ -1,0 +1,289 @@
+---
+title: "In vitro bacterial dynamics"
+subtitle: "Effect of antifungal on Pe and two common bacteria from Drosophila's microbiota"
+date: ""
+chunk_output_type: inline
+output: html_document
+theme: yeti
+toc: yes
+toc_float: yes
+authors: "Youn"
+---
+  
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, message = FALSE, warning = FALSE)
+```
+
+
+# Packages
+
+```{r packages-loading}
+#[R v4.0.5]
+
+if(require("pacman")==T){
+  library("pacman")
+}else{
+  install.packages("pacman")
+}
+
+pacman::p_load(Rmisc, tidyverse, tidybayes, ggplot2, kableExtra, survival, survminer, performance, car, lme4, multcomp, emmeans, brms, cmdstanr, ggtext, relaimpo, gridExtra, bayesplot, flextable)
+
+
+library(here)      # CRAN v1.0.1
+## tool for workspace location management
+## automatically detects the workspace after loading the package if Rstudio was opened using the script file (or with new R project)
+## load last to avoid conflicts
+here()
+
+```
+
+# Preprocess
+
+Loading the data
+
+```{r data-load}
+plating_data=read.table(here("data_CFU.txt"),h=T, dec=".")
+head(plating_data)
+
+```
+
+Editing the data table for cleaner graphical outputs
+
+```{r data tinkering}
+data1 = plating_data %>%
+  mutate(time = as.factor(time)) %>%
+  mutate(species = str_replace_all(species, "P_entomophila", "*P. entomophila*")) %>%
+  mutate(species = str_replace_all(species, "A_pasterianus", "*A. pasterianus*")) %>%
+  mutate(species = str_replace_all(species, "L_plantarum", "*L. plantarum*")) %>%
+  mutate(antifungal = str_replace_all(antifungal, "nipagin", "methylparaben")) %>%
+    mutate(antifungal = str_replace_all(antifungal, "propionic", "propionic acid")) %>%
+  mutate(species = factor(species, levels=c("*A. pasterianus*", "*L. plantarum*", "*P. entomophila*"))) %>%
+  mutate(treatment = factor(treatment, levels=c("control", "antifungal"))) %>%
+  arrange(species) %>%
+  arrange(treatment)
+
+data2=subset(data1, data1$species=="*P. entomophila*"& data1$antifungal=="methylparaben")
+data2=subset(data2, data2$antifungal=="methylparaben")
+
+
+mycol=c("#FFC107","#8A68D7", "#f01010")
+mycol2=c("#f01010")
+
+```
+
+# Plots of bacterial loads
+
+Complete plot
+
+```{r plating plot}
+##################################################################
+### Plotting abundance dynamics for each vial (N=6 mean of two plated flies for each time)
+
+plot_cfu2=ggplot(aes(x=time, y=(CFU+1), fill=species, colour=species), data=data1)+
+  stat_summary(fun.data = "mean_cl_boot", fun.args = list(conf.int = .95), geom="point", aes(group = interaction(species,treatment),  shape = treatment), position=position_dodge(0), alpha=0.5, size = 2, show.legend = T)+
+  stat_summary(fun.data = "mean_cl_boot", fun.args = list(conf.int = .95), geom="linerange", aes(group = interaction(species,treatment)), position=position_dodge(0), alpha=1, size = 0.3, show.legend = F)+
+  stat_summary(fun.data = "mean_cl_boot", geom="line", aes(group = interaction(species,treatment), linetype = treatment), position=position_dodge(0), alpha=1, size = 0.3, show.legend = F)+
+  scale_fill_manual(values=mycol)+
+  scale_color_manual(values=mycol)+
+  scale_shape_manual(values=c(16,17))+
+  scale_alpha_manual(values=c(1,0.7,0.4))+
+  labs(x= "Time (hours)", y="CFU per mL")+
+  annotate("text", x = 0.65, y = 6666, label = "min.", vjust = -0.5, size= 2)+
+  geom_hline(yintercept = 6666, linetype='dotted', color = 'black')+
+  coord_cartesian(ylim = c(1,4000000000), clip="off")+
+  facet_grid(antifungal~species)+
+  scale_y_log10(breaks = c(1, 100, 10000, 1000000, 100000000), labels=scales::scientific)+
+  theme_bw(base_size = 12)+
+  theme(panel.grid.major.x = element_blank(), panel.grid.major.y = element_line(color = "grey95", size = 0.4), panel.grid.minor = element_blank())+
+  theme(axis.text.x = element_text(angle=0, vjust=0, hjust=0.5), axis.title.y = element_markdown(), legend.position = "right", legend.text = element_markdown(), strip.text.x = element_markdown(), strip.text.y = element_markdown(), legend.title = element_markdown())
+
+plot_cfu2
+
+pdf(height=4, width=6, file=here("plot_CFU_antifungal.pdf"))
+plot_cfu2+
+  theme(panel.grid.major.x = element_blank(), panel.grid.major.y = element_line(color = "grey95", size = 0.4), panel.grid.minor = element_blank())+
+  theme(axis.text.x = element_text(size = 8, angle=0, vjust=0, hjust=0.5), axis.text.y = element_text(size = 8), axis.title.x = element_markdown(size = 10, padding = margin(5, 0, 0, 0)), axis.title.y = element_markdown(size = 10), legend.position = "right", legend.text = element_markdown(size = 8), strip.text.x = element_blank(), strip.background.x = element_blank(), strip.text.y = element_markdown(), strip.background.y = element_blank(), legend.title = element_blank(), plot.margin = margin(t = 30, r = 22, b = 6, l = 6, unit = "pt"), panel.border = element_rect(colour = "grey20", fill=NA, size=0.4))
+dev.off()
+
+
+```
+
+Plot with only Pe
+
+```{r plating plot only Pe}
+##################################################################
+### Plotting abundance dynamics for each vial (N=6 mean of two plated flies for each time)
+
+plot_cfu3=ggplot(aes(x=time, y=(CFU+1), fill=species, colour=species), data=data2)+
+  stat_summary(fun.data = "mean_cl_boot", fun.args = list(conf.int = .95), geom="point", aes(group = interaction(species,treatment),  shape = treatment), position=position_dodge(0), alpha=0.5, size = 3, show.legend = F)+
+  stat_summary(fun.data = "mean_cl_boot", fun.args = list(conf.int = .95), geom="linerange", aes(group = interaction(species,treatment)), position=position_dodge(0), alpha=1, size = 0.3, show.legend = F)+
+  stat_summary(fun.data = "mean_cl_boot", geom="line", aes(group = interaction(species,treatment), linetype = treatment), position=position_dodge(0), alpha=1, size = 0.3, show.legend = F)+
+  scale_fill_manual(values=mycol2)+
+  scale_color_manual(values=mycol2)+
+  scale_shape_manual(values=c(16,17))+
+  labs(x= "Time (hours)", y="CFU per mL")+
+  annotate("text", x = 0.65, y = 6666, label = "min.", vjust = -0.5, size = 2)+
+  geom_hline(yintercept = 6666, linetype='dotted', color = 'black', size = 0.3)+
+  coord_cartesian(ylim = c(1,4000000000), clip="off")+
+  scale_y_log10(breaks = c(1, 100, 10000, 1000000, 100000000), labels=scales::scientific)+
+  theme_bw(base_size = 12)+
+  theme(panel.grid.major.x = element_blank(), panel.grid.major.y = element_line(color = "grey95", size = 0.4), panel.grid.minor = element_blank())+
+  theme(axis.text.x = element_text(angle=0, vjust=0, hjust=0.5), axis.title.y = element_markdown(), legend.position = "right", legend.text = element_markdown(), strip.text.x = element_markdown(), strip.text.y = element_markdown(), legend.title = element_markdown())
+
+plot_cfu3
+
+pdf(height=3, width=2.5, file=here("plot_CFU_antifungal_Pe.pdf"))
+plot_cfu3+
+  theme(panel.grid.major.x = element_blank(), panel.grid.major.y = element_line(color = "grey95", size = 0.4), panel.grid.minor = element_blank())+
+  theme(axis.text.x = element_text(size = 8, angle=0, vjust=0, hjust=0.5), axis.text.y = element_text(size = 8), axis.title.x = element_markdown(size = 10, padding = margin(5, 0, 0, 0)), axis.title.y = element_markdown(size = 10), legend.position = "right", legend.text = element_markdown(size = 8), strip.text.x = element_blank(), strip.background.x = element_blank(), strip.text.y = element_markdown(), strip.background.y = element_blank(), legend.title = element_blank(), plot.margin = margin(t = 30, r = 22, b = 6, l = 6, unit = "pt"), panel.border = element_rect(colour = "grey20", fill=NA, size=0.4))
+dev.off()
+
+
+```
+
+# Analysis
+
+Bayesian model of the effect of time and food preservative on bacterial growth of 3 species
+
+```{r model construction}
+
+if (file.exists(here("mod_brms_cfu.Rdata"))) {
+  load(here("mod_brms_cfu.Rdata"))
+} else {
+mod_brms_cfu <- brm(
+  bf(log(CFU+1) ~ treatment+time+treatment:time+(1|replicate)), 
+    data = data2,
+    chains = 4, iter = 10000, warmup = 2000, seed = 1312,
+    prior = c(
+      set_prior("normal(0,5)", class = "b"),
+      set_prior("normal(0,1)", class = "sd")
+    ),
+  backend = "cmdstanr"
+)
+save(
+  list = c("mod_brms_cfu"),
+  file = here("mod_brms_cfu.Rdata")
+)
+}
+```
+
+Check of model sanity and making tables with fitted
+
+```{r extracting posteriors}
+pp_check(mod_brms_cfu)
+pp_check(mod_brms_cfu, "stat_2d")
+
+fits_bay1 <- data2 |> 
+  dplyr::select(species, antifungal, treatment, replicate, time, CFU) |> 
+  distinct()  |> 
+  add_epred_draws(mod_brms_cfu) |> 
+  ungroup()
+
+fits_bay1
+```
+
+Plot of observed vs fitted values
+
+```{r obs vs fitted plot}
+Plot_CFU_obsvsfitted=ggplot(aes(x=time, y=(CFU+1), fill=species, colour=species), data=data2)+
+  stat_eye(aes(x=time, y=(exp(.epred)), group = interaction(species,treatment)), normalize = "xy",.width = c(0.001, 0.95), shape = "", point_size = 1, point_color = "black", slab_fill = "black", slab_alpha = 0.2, interval_alpha = 0, data=fits_bay1, show.legend = F)+
+  stat_summary(fun.data = "mean_cl_boot", fun.args = list(conf.int = .95), geom="point", aes(group = interaction(species,treatment),  shape = treatment), position=position_dodge(0), alpha=0.5, size = 3, show.legend = F)+
+  stat_summary(fun.data = "mean_cl_boot", fun.args = list(conf.int = .95), geom="linerange", aes(group = interaction(species,treatment)), position=position_dodge(0), alpha=1, size = 0.3, show.legend = F)+
+  stat_summary(fun.data = "mean_cl_boot", geom="line", aes(group = interaction(species,treatment), linetype = treatment), position=position_dodge(0), alpha=1, size = 0.3, show.legend = F)+
+  scale_fill_manual(values=mycol2)+
+  scale_color_manual(values=mycol2)+
+  scale_shape_manual(values=c(16,17))+
+  labs(x= "Time (hours)", y="CFU per mL")+
+  annotate("text", x = 0.65, y = 6666, label = "min.", vjust = -0.5, size = 2)+
+  geom_hline(yintercept = 6666, linetype='dotted', color = 'black', size = 0.3)+
+  coord_cartesian(ylim = c(1,4000000000), clip="off")+
+  scale_y_log10(breaks = c(1, 100, 10000, 1000000, 100000000), labels=scales::scientific)+
+  theme_bw(base_size = 12)+
+  theme(panel.grid.major.x = element_blank(), panel.grid.major.y = element_line(color = "grey95", size = 0.4), panel.grid.minor = element_blank())+
+  theme(axis.text.x = element_text(angle=0, vjust=0, hjust=0.5), axis.title.y = element_markdown(), legend.position = "right", legend.text = element_markdown(), strip.text.x = element_markdown(), strip.text.y = element_markdown(), legend.title = element_markdown())
+
+Plot_CFU_obsvsfitted
+```
+
+Extracting model fitted into two tables
+
+```{r extract difference table from fits}
+
+fits_bay1=subset(fits_bay1, fits_bay1$replicate==1)
+fits_bay1$exp.epred=exp(fits_bay1$.epred)
+
+table_pred <-flextable(fits_bay1 |>
+  mutate(.iteration = .draw) |>
+  group_by(time) |>
+  compare_levels(exp.epred, by = treatment, comparison = control) |>
+  mean_hdi(exp.epred) |> ## here with mean, but it also works with mean_hdi, median_qi, mean_qi
+  mutate(.lower = round(.lower, digits = 2)) |>
+  mutate(.upper = round(.upper, digits = 2)) |>
+  mutate(exp.epred = round(exp.epred, digits = 2)) |>
+  dplyr::select(treatment, time, exp.epred, .lower, .upper) |>
+  rename("LowerCI" = ".lower", "Prediction" = "exp.epred", "UpperCI" = ".upper", "Treatment" = "treatment", "Time" = "time")) |>
+  color(~Prediction > 0 & LowerCI > 0, ~Prediction, color="#539c4e") |>
+  bold(~Prediction > 0 & LowerCI > 0, ~Prediction, bold=TRUE) |>
+  color(~Prediction < 0 & UpperCI < 0, ~Prediction, color="#ad2323") |>
+  bold(~Prediction < 0 & UpperCI < 0, ~Prediction, bold=TRUE) |>
+  bold(part="header", bold=TRUE) |>
+  set_table_properties(layout = "autofit") |>
+  bg(bg="lightgrey", part = "header") |>
+  fontsize(size = 9, part = "body") |>
+  set_formatter(Prediction = function(x) {
+    formatC(x, format = "e", digits = 1)
+  }) |>
+  set_formatter(LowerCI = function(x) {
+    formatC(x, format = "e", digits = 1)
+  }) |>
+    set_formatter(UpperCI = function(x) {
+    formatC(x, format = "e", digits = 1)
+  })
+
+table_pred
+
+if(file.exists(here("table_nipagin_effect_Pe.docx")))
+{
+}else{
+    save_as_docx(table_pred, path = here("table_nipagin_effect_Pe.docx"))
+  }
+
+
+table_pred2 <-flextable(fits_bay1 |>
+  mutate(.iteration = .draw) |>
+  group_by(treatment) |>
+  compare_levels(exp.epred, by = time, comparison = control) |>
+  mean_hdi(exp.epred) |> ## here with mean, but it also works with mean_hdi, median_qi, mean_qi
+  mutate(.lower = round(.lower, digits = 2)) |>
+  mutate(.upper = round(.upper, digits = 2)) |>
+  mutate(exp.epred = round(exp.epred, digits = 2)) |>
+  dplyr::select(treatment, time, exp.epred, .lower, .upper) |>
+  rename("LowerCI" = ".lower", "Prediction" = "exp.epred", "UpperCI" = ".upper", "Treatment" = "treatment", "Time" = "time")) |>
+  color(~Prediction > 0 & LowerCI > 0, ~Prediction, color="#539c4e") |>
+  bold(~Prediction > 0 & LowerCI > 0, ~Prediction, bold=TRUE) |>
+  color(~Prediction < 0 & UpperCI < 0, ~Prediction, color="#ad2323") |>
+  bold(~Prediction < 0 & UpperCI < 0, ~Prediction, bold=TRUE) |>
+  bold(part="header", bold=TRUE) |>
+  set_table_properties(layout = "autofit") |>
+  bg(bg="lightgrey", part = "header") |>
+  fontsize(size = 9, part = "body") |>
+  set_formatter(Prediction = function(x) {
+    formatC(x, format = "e", digits = 1)
+  }) |>
+  set_formatter(LowerCI = function(x) {
+    formatC(x, format = "e", digits = 1)
+  }) |>
+    set_formatter(UpperCI = function(x) {
+    formatC(x, format = "e", digits = 1)
+  })
+
+table_pred2
+
+if(file.exists(here("table_nipagin_effect_Pe2.docx")))
+{
+}else{
+    save_as_docx(table_pred2, path = here("table_nipagin_effect_Pe2.docx"))
+  }
+
+```

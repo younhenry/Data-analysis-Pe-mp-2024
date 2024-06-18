@@ -1,0 +1,520 @@
+---
+title: "Flies' survival to P. entomophila exposure, depending on nipagin (mp), initial OD, and vial change frequency"
+date: ""
+chunk_output_type: inline
+output: html_document
+toc: yes
+theme: yeti
+toc_float: yes
+authors: "Youn"
+---
+  
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, message = FALSE, warning = FALSE)
+```
+
+
+# Packages
+
+```{r packages-loading}
+#[R v4.2.1]
+
+if(require("pacman")==T){
+  library("pacman")
+}else{
+  install.packages("pacman")
+}
+
+pacman::p_load(Rmisc, tidyverse, tidybayes, ggplot2, kableExtra, gridExtra, flextable, survival, survminer, performance, car, lme4, multcomp, emmeans, brms, cmdstanr, bayesplot, gganimate, gifski, ggtext, relaimpo, arm, MuMIn, DHARMa, coxme, magrittr)
+
+library(here)
+## automatically detects the workspace after loading the package if Rstudio was opened using the script file (or with new R project)
+## load last to avoid conflicts
+here::here()
+
+```
+
+# Preprocess
+
+Loading the data
+
+```{r data-load}
+survival_data=read.table(here::here("data_survival.txt"),h=T, dec=".")
+head(survival_data)
+
+plating_data=read.table(here::here("data_plating.txt"),h=T, dec=".")
+head(plating_data)
+
+offspring_data=read.table(here::here("data_offspring.txt"),h=T, dec=".")
+head(offspring_data)
+
+```
+
+Editing data tables for cleaner graphical outputs
+
+```{r data tinkering}
+data_survival = survival_data |>
+  mutate(vial_change2 = str_replace_all(vial_change, "_", " "), nipagin2 = str_replace_all(nipagin, "_", " "), OD600_factor = str_replace_all(OD600_factor, "_", " ")) |>
+  mutate(pathogen=factor(pathogen, levels=c("sham", "Pe"))) |>
+  mutate(vial_change=factor(vial_change, levels=c("no_change", "daily_change"))) |>
+  mutate(nipagin=factor(nipagin, levels=c("without_nipagin", "with_nipagin"))) |>
+  mutate(OD600_factor=factor(OD600_factor, levels=c("sham", "OD = 0.0001", "OD = 0.01", "OD = 1", "OD = 50"))) |>
+  arrange(pathogen) |>
+  arrange(vial_change) |>
+  arrange(nipagin) |>
+  arrange(OD600_factor) 
+
+data_survival$OD600_ordered=ordered(data_survival$OD600)
+data_survival$nipagin3 = str_remove(data_survival$nipagin2," nipagin")
+
+data_survival_end=subset(data_survival, data_survival$time==183)
+
+
+data_CFU = plating_data |>
+  mutate(vial_change2 = str_replace_all(vial_change, "_", " "), nipagin2 = str_replace_all(nipagin, "_", " "), OD600_factor = str_replace_all(OD600_factor, "_", " ")) |>
+  mutate(pathogen=factor(pathogen, levels=c("sham", "Pe"))) |>
+  mutate(vial_change=factor(vial_change, levels=c("no_change", "daily_change"))) |>
+  mutate(nipagin=factor(nipagin, levels=c("without_nipagin", "with_nipagin"))) |>
+  mutate(OD600_factor=factor(OD600_factor, levels=c("sham", "OD = 0.0001", "OD = 0.01", "OD = 1", "OD = 50"))) |>
+  arrange(pathogen) |>
+  arrange(vial_change) |>
+  arrange(nipagin) |>
+  arrange(OD600_factor) 
+
+data_offspring = offspring_data |>
+  mutate(nipagin2 = str_replace_all(nipagin, "_", " "), OD600_factor = str_replace_all(OD600_factor, "_", " ")) |>
+  mutate(nipagin=factor(nipagin, levels=c("without_nipagin", "with_nipagin"))) |>
+  mutate(OD600_factor=factor(OD600_factor, levels=c("sham", "OD = 0.0001", "OD = 0.01", "OD = 1", "OD = 50"))) |>
+  arrange(nipagin) |>
+  arrange(OD600_factor)
+
+mycol=c("#808080","#f01010")
+mycol2=c("#808080","#8a6767","#b35f5f","#d24040","#f01010")
+
+```
+
+# Survival analysis
+
+Making a full Bayesian model for survival
+
+```{r Bayesian modeling}
+if (file.exists(here::here("mod_brms_survival.Rdata"))) {
+  load(here::here("mod_brms_survival.Rdata"))
+} else {
+mod_brms_survival <- brm(
+  bf(dead_flies | trials(total_flies) ~
+       nipagin * OD600_ordered * vial_change,
+     family = binomial()
+  ),
+  data = data_survival_end,
+  prior=c(
+    set_prior("normal(0,1.5)",class="Intercept"),
+    set_prior("normal(0,1)",class="b")
+  ),
+  chains = 4, iter = 10000, seed = 1312,
+  backend = "cmdstanr"
+)
+save(
+  list = c("mod_brms_survival"),
+  file = here::here("mod_brms_survival.Rdata")
+)
+}
+
+```
+
+Checkups for model sanity and making a new table of model posteriors 
+
+```{r pp-check and computing fits for survival}
+pp_check(mod_brms_survival)
+pp_check(mod_brms_survival, "stat_2d")
+
+fits_bayes_survival <- data_survival_end |> 
+  dplyr::select(nipagin, nipagin3, vial_change, vial_change2, OD600_factor, OD600_ordered, total_flies) |> 
+  mutate(total_flies=1) |> 
+  distinct() |> 
+  add_epred_draws(mod_brms_survival) |> 
+  ungroup()
+
+fits_bayes_survival$surv.epred=1-fits_bayes_survival$.epred
+
+```
+
+Plotting obs vs fitted for survival
+
+```{r final time observed vs predicted with Bayesian model for survival}
+Plot_survival_obsvsfitted <- ggplot(data_survival_end, aes(OD600_factor, (alive_flies/total_flies), fill=OD600_factor))
+Plot_survival_obsvsfitted <- Plot_survival_obsvsfitted+
+  stat_eye(aes(OD600_factor,1-.epred, group = OD600_factor), normalize = "xy",.width = c(0.001, 0.95), shape = "", point_size = 1, point_color = "black", slab_fill = "black", slab_alpha = 0.2, interval_alpha = 0, data=fits_bayes_survival, show.legend = F)+
+  stat_summary(fun.data = "mean_cl_boot", fun.args = list(conf.int = .95), geom="pointrange", aes(group = OD600_factor, colour=OD600_factor), alpha=1, position=position_dodge(0), show.legend = F)+
+  scale_fill_manual(values=mycol2)+
+  scale_color_manual(values=mycol2)+
+  facet_grid(row= vars(nipagin3, vial_change2))+
+  labs(x="*P. entomophila* dose",y="Proportion of alive flies (final time)")+
+  coord_cartesian(ylim=c(0,1))+
+  theme_bw(base_size = 12)+
+  theme(strip.text.x = element_markdown(angle = 0), legend.text = element_markdown())+
+  theme(axis.text.x = element_text(angle=0, vjust=0.5, hjust=0.5), axis.title.x =  element_markdown(), panel.grid.major.y = element_line(color = "grey95", size = 0.4), panel.grid.major.x = element_blank(), panel.grid.minor = element_blank())
+
+Plot_survival_obsvsfitted
+
+pdf(height=5, width=5, file=here::here("Plot_survival_obsvsfitted_finaltime.pdf"))
+Plot_survival_obsvsfitted +
+  theme(strip.text.x = element_markdown(size = 8), strip.text.y = element_blank(), strip.background.y = element_blank(), legend.title = element_blank(), plot.margin = margin(t = 30, r = 22, b = 6, l = 6, unit = "pt"), panel.border = element_rect(colour = "grey20", fill=NA, size=0.4))
+dev.off()
+
+```
+Extracting posteriors into a table for survival
+
+```{r extract difference table from fits}
+table_by_OD <-flextable(fits_bayes_survival |>
+  mutate(.iteration = .draw) |>
+  group_by(vial_change, nipagin) |>
+  compare_levels(surv.epred, by = OD600_factor, comparison = control) |>
+  mean_hdi(surv.epred) |> ## here with mean, but it also works with mean_hdi, median_qi, mean_qi
+  mutate(.lower = round(.lower, digits = 2)) |>
+  mutate(.upper = round(.upper, digits = 2)) |>
+  mutate(surv.epred = round(surv.epred, digits = 2)) |>
+  dplyr::select(OD600_factor, nipagin, vial_change, surv.epred, .lower, .upper) |>
+  rename("LowerCI" = ".lower", "Prediction" = "surv.epred", "UpperCI" = ".upper", "P.e dose" = "OD600_factor", "Nipagin" = "nipagin", "Vial change" = "vial_change")) |>
+  color(~Prediction > 0 & LowerCI > 0, ~Prediction, color="#539c4e") |>
+  bold(~Prediction > 0 & LowerCI > 0, ~Prediction, bold=TRUE) |>
+  color(~Prediction < 0 & UpperCI < 0, ~Prediction, color="#ad2323") |>
+  bold(~Prediction < 0 & UpperCI < 0, ~Prediction, bold=TRUE) |>
+  bold(part="header", bold=TRUE) |>
+  set_table_properties(layout = "autofit") |>
+  bg(bg="lightgrey", part = "header") |>
+  fontsize(size = 9, part = "body")
+
+table_by_OD
+
+if(file.exists(here::here("survival_differences_to_control.docx")))
+{
+}else{
+    save_as_docx(table_by_OD, path = here::here("survival_differences_to_control.docx"))
+  }
+
+
+```
+
+# CFU Analysis
+
+Making a full Bayesian model for P. entomophila load
+
+```{r model plating}
+data_CFU_trimmed = data_CFU %>% drop_na(CFU_per_fly) %>% group_by(nipagin, OD600_factor, vial_change, replicate) %>% top_n(1, time)
+
+
+if (file.exists(here::here("mod_brms_cfu.Rdata"))) {
+  load(here::here("mod_brms_cfu.Rdata"))
+} else {
+mod_brms_cfu <- brm(
+  bf(log(CFU_per_fly+1) ~ OD600_factor*nipagin*vial_change), 
+    data = data_CFU_trimmed,
+    chains = 4, iter = 10000, warmup = 5000, seed = 1312,
+    prior = c(
+      set_prior("normal(0,1.5)",class="Intercept"),
+      set_prior("normal(0,5)", class = "b")
+    ),
+  backend = "cmdstanr"
+)
+save(
+  list = c("mod_brms_cfu"),
+  file = here::here("mod_brms_cfu.Rdata")
+)
+}
+```
+
+Checkups for model sanity and making a new table of model posteriors 
+
+```{r pp-check and computing fits for CFU}
+pp_check(mod_brms_cfu)
+pp_check(mod_brms_cfu, "stat_2d")
+
+fits_bayCFU <- data_CFU_trimmed |> 
+  dplyr::select(ID, nipagin, nipagin2, pathogen, OD600, OD600_factor, vial_change, replicate, time, CFU_per_fly) |> 
+  distinct()  |> 
+  add_epred_draws(mod_brms_cfu) |>
+  ungroup()
+
+```
+
+Plotting obs vs fitted for CFU
+
+```{r final time observed vs predicted with Bayesian model for Pe load}
+Plot_CFU_obsvsfitted <- ggplot(data_CFU_trimmed, aes(OD600_factor, CFU_per_fly+1, fill=OD600_factor))
+Plot_CFU_obsvsfitted <- Plot_CFU_obsvsfitted+
+  stat_eye(aes(OD600_factor,exp(.epred), group = OD600_factor), normalize = "xy",.width = c(0.001, 0.95), shape = "", point_size = 1, point_color = "black", slab_fill = "black", slab_alpha = 0.2, interval_alpha = 0, data=fits_bayCFU, show.legend = F)+
+  stat_summary(fun.data = "mean_cl_boot", fun.args = list(conf.int = .95), geom="pointrange", aes(group = OD600_factor, colour=OD600_factor), alpha=1, position=position_dodge(0), show.legend = F)+
+  scale_fill_manual(values=mycol2)+
+  scale_color_manual(values=mycol2)+
+labs(x= "*P. entomophila* dose", y="*P. entomophila* CFU per fly")+
+  coord_cartesian(ylim=c(1,6000000), clip="on")+
+  facet_grid(row= vars(nipagin2, vial_change))+
+  scale_y_log10(breaks = c(1, 10, 100, 1000, 10000, 100000, 1000000), labels=scales::scientific)+
+  theme_bw(base_size = 12)+
+  theme(strip.text.x = element_markdown(angle = 0), legend.text = element_markdown())+
+  theme(axis.text.x = element_text(angle=0, vjust=0.5, hjust=0.5), axis.title.x =  element_markdown(), axis.title.y =  element_markdown(), panel.grid.major.y = element_line(color = "grey95", size = 0.4), panel.grid.major.x = element_blank(), panel.grid.minor = element_blank())
+
+Plot_CFU_obsvsfitted
+
+pdf(height=5, width=5, file=here::here("Plot_CFU_obsvsfitted_finaltime.pdf"))
+Plot_CFU_obsvsfitted +
+  theme(strip.text.x = element_markdown(size = 8), strip.text.y = element_blank(), strip.background.y = element_blank(), legend.title = element_blank(), plot.margin = margin(t = 30, r = 22, b = 6, l = 6, unit = "pt"), panel.border = element_rect(colour = "grey20", fill=NA, size=0.4))
+dev.off()
+
+
+```
+
+Extracting posteriors into tables for Pe CFU load
+
+```{r extract difference table from CFU fits}
+fits_bayCFU=subset(fits_bayCFU, fits_bayCFU$replicate=="a")
+fits_bayCFU$exp.epred=exp(fits_bayCFU$.epred)
+
+table_CFU_by_OD <-flextable(fits_bayCFU |>
+  mutate(.iteration = .draw) |>
+  group_by(vial_change, nipagin) |>
+  compare_levels(exp.epred, by = OD600_factor, comparison = control) |>
+  mean_hdi(exp.epred) |> ## here with mean, but it also works with mean_hdi, median_qi, mean_qi
+  mutate(.lower = round(.lower, digits = 2)) |>
+  mutate(.upper = round(.upper, digits = 2)) |>
+  mutate(exp.epred = round(exp.epred, digits = 2)) |>
+  dplyr::select(OD600_factor, nipagin, vial_change, exp.epred, .lower, .upper) |>
+  rename("LowerCI" = ".lower", "Prediction" = "exp.epred", "UpperCI" = ".upper", "P.e dose" = "OD600_factor", "Nipagin" = "nipagin", "Vial change" = "vial_change")) |>
+  color(~Prediction > 0 & LowerCI > 0, ~Prediction, color="#539c4e") |>
+  bold(~Prediction > 0 & LowerCI > 0, ~Prediction, bold=TRUE) |>
+  color(~Prediction < 0 & UpperCI < 0, ~Prediction, color="#ad2323") |>
+  bold(~Prediction < 0 & UpperCI < 0, ~Prediction, bold=TRUE) |>
+  bold(part="header", bold=TRUE) |>
+  set_table_properties(layout = "autofit") |>
+  bg(bg="lightgrey", part = "header") |>
+  fontsize(size = 9, part = "body") |>
+  set_formatter(Prediction = function(x) {
+    formatC(x, format = "e", digits = 1)
+  }) |>
+  set_formatter(LowerCI = function(x) {
+    formatC(x, format = "e", digits = 1)
+  }) |>
+    set_formatter(UpperCI = function(x) {
+    formatC(x, format = "e", digits = 1)
+  })
+
+table_CFU_by_OD
+
+
+if(file.exists(here::here("CFU_differences_to_control.docx")))
+{
+}else{
+    save_as_docx(table_CFU_by_OD, path = here::here("CFU_differences_to_control.docx"))
+  }
+
+
+table_CFU_by_change <-flextable(fits_bayCFU |>
+  mutate(.iteration = .draw) |>
+  group_by(nipagin, OD600_factor) |>
+  compare_levels(exp.epred, by = vial_change , comparison = control) |>
+  mean_hdi(exp.epred) |> ## here with mean, but it also works with mean_hdi, median_qi, mean_qi
+  mutate(.lower = round(.lower, digits = 2)) |>
+  mutate(.upper = round(.upper, digits = 2)) |>
+  mutate(exp.epred = round(exp.epred, digits = 2)) |>
+  dplyr::select(OD600_factor, nipagin, vial_change, exp.epred, .lower, .upper) |>
+  rename("LowerCI" = ".lower", "Prediction" = "exp.epred", "UpperCI" = ".upper", "P.e dose" = "OD600_factor", "Nipagin" = "nipagin", "Vial change" = "vial_change")) |>
+  color(~Prediction > 0 & LowerCI > 0, ~Prediction, color="#539c4e") |>
+  bold(~Prediction > 0 & LowerCI > 0, ~Prediction, bold=TRUE) |>
+  color(~Prediction < 0 & UpperCI < 0, ~Prediction, color="#ad2323") |>
+  bold(~Prediction < 0 & UpperCI < 0, ~Prediction, bold=TRUE) |>
+  bold(part="header", bold=TRUE) |>
+  set_table_properties(layout = "autofit") |>
+  bg(bg="lightgrey", part = "header") |>
+  fontsize(size = 9, part = "body") |>
+  set_formatter(Prediction = function(x) {
+    formatC(x, format = "e", digits = 1)
+  }) |>
+  set_formatter(LowerCI = function(x) {
+    formatC(x, format = "e", digits = 1)
+  }) |>
+    set_formatter(UpperCI = function(x) {
+    formatC(x, format = "e", digits = 1)
+  })
+
+table_CFU_by_change
+
+
+if(file.exists(here::here("CFU_differences_to_nochange.docx")))
+{
+}else{
+    save_as_docx(table_CFU_by_change, path = here::here("CFU_differences_to_nochange.docx"))
+  }
+
+```
+
+# Plotting for survival and Pe CFU load
+
+```{r survival all conditions}
+data_survival$OD600=as.factor(data_survival$OD600)
+
+plot_survival <- ggplot(data_survival, aes(time/24, (alive_flies/total_flies), fill=OD600))
+plot_survival <- plot_survival+
+  stat_summary(fun.data = "mean_cl_boot", fun.args = list(conf.int = .95), geom="point", aes(group = OD600, colour=OD600), alpha=1, position=position_dodge(0), show.legend = F)+
+  geom_smooth(aes(group = OD600, colour=OD600), method = 'loess', size=0.8, linetype=1, alpha=0.2, show.legend = F, se = T, level = 0.95, span = 0.9)+
+  scale_fill_manual(values=mycol2)+
+  scale_color_manual(values=mycol2)+
+  facet_grid(nipagin2*vial_change2~OD600_factor)+
+  labs(x= "Time (days)", y="Proportion of alive flies")+
+  coord_cartesian(ylim=c(0,1), xlim=c(0,8))+
+  scale_x_continuous(breaks = c(0:8))+
+  theme_bw(base_size = 12)+
+  theme(strip.text.x = element_markdown(angle = 0), legend.text = element_markdown())+
+  theme(axis.text.x = element_text(angle=0, vjust=0.5, hjust=0.5), panel.grid.major.y = element_line(color = "grey95", size = 0.4), panel.grid.major.x = element_blank(), panel.grid.minor = element_blank())
+
+plot_survival
+
+```
+
+
+```{r plating all conditions}
+data_CFU$OD600=as.factor(data_CFU$OD600)
+
+plot_cfu=ggplot(aes(x=time/24, y=(CFU_per_fly+1), fill=OD600, colour=OD600), data=data_CFU)+
+  geom_smooth(aes(group = OD600), method = 'loess', level=0.95, size=1, linetype=1, alpha=0.2, show.legend = F, se = T, span = 0.9, position=position_dodge(0.5))+
+  stat_summary(fun.data = "mean_cl_boot", fun.args = list(conf.int = .95), geom="pointrange", aes(group = OD600), alpha=1, fatten = 1.6, size = 0.4, position=position_dodge(0.5), show.legend = F)+
+  scale_fill_manual(values=mycol2)+
+  scale_color_manual(values=mycol2)+
+  labs(x= "Time (days)", y="*P. entomophila* CFU per fly")+
+  coord_cartesian(ylim=c(1,6000000), xlim=c(0, 8), clip="on")+
+  facet_grid(nipagin2*vial_change2~OD600_factor)+
+  scale_x_continuous(breaks = c(0:8))+
+  scale_y_log10(breaks = c(1, 10, 100, 1000, 10000, 100000, 1000000), labels=scales::scientific)+
+  theme_bw(base_size = 12)+
+  theme(panel.grid.major.x = element_blank(), panel.grid.major.y = element_line(color = "grey95", size = 0.4), panel.grid.minor = element_blank())+
+  theme(axis.text.x = element_text(angle=0, vjust=0, hjust=0.5), axis.title.y = element_markdown(), legend.position = "right", legend.text = element_markdown(), strip.text.x = element_markdown(), strip.text.y = element_markdown(), legend.title = element_blank())
+
+plot_cfu
+```
+Merged plot with survival and CFU arranged in a single plot
+
+```{r Summary plot all conditions}
+plot_survival2 = plot_survival+
+  theme(panel.grid.major.x = element_blank(), panel.grid.major.y = element_line(color = "grey95", size = 0.4), panel.grid.minor = element_blank())+
+  theme(axis.text.x = element_text(size = 8, angle=0, vjust=0, hjust=0.5), axis.text.y = element_text(size = 8), axis.title.x = element_markdown(size = 12, padding = margin(5, 0, 0, 0)), axis.title.y = element_markdown(size = 12), legend.position = "bottom", legend.text = element_markdown(size = 8), strip.text.x = element_markdown(size = 8), strip.text.y = element_blank(), strip.background.y = element_blank(), strip.background.x = element_blank(), legend.title = element_blank(), plot.margin = margin(t = 30, r = 22, b = 6, l = 6, unit = "pt"), panel.border = element_rect(colour = "grey20", fill=NA, size=0.4))
+
+
+plot_cfu2 = plot_cfu+
+  theme(panel.grid.major.x = element_blank(), panel.grid.major.y = element_line(color = "grey95", size = 0.4), panel.grid.minor = element_blank())+
+  theme(axis.text.x = element_text(size = 8, angle=0, vjust=0, hjust=0.5), axis.text.y = element_text(size = 8), axis.title.x = element_markdown(size = 12, padding = margin(5, 0, 0, 0)), axis.title.y = element_markdown(size = 12), legend.position = "bottom", legend.text = element_markdown(size = 8), strip.text.x = element_markdown(size = 8), strip.text.y = element_blank(), strip.background.y = element_blank(), strip.background.x = element_blank(), legend.title = element_blank(), plot.margin = margin(t = 30, r = 22, b = 6, l = 6, unit = "pt"), panel.border = element_rect(colour = "grey20", fill=NA, size=0.4))
+
+pdf(height=5, width=10, file=here::here("plot_summary.pdf"))
+grid.arrange(plot_survival2, plot_cfu2, nrow = 1, widths = c(1, 1))
+dev.off()
+
+```
+
+Plotting of survival and Pe load without the showing the effect of vial change 
+
+```{r plots for article no vial change}
+#### survival
+data_survival$OD600=as.factor(data_survival$OD600)
+data_nochange=subset(data_survival, data_survival$vial_change=="no_change")
+
+plot_survival3 <- ggplot(data_nochange, aes(time/24, (alive_flies/total_flies), fill=OD600))
+plot_survival3 <- plot_survival3+
+  stat_summary(fun.data = "mean_cl_boot", fun.args = list(conf.int = .95), geom="point", aes(group = OD600, colour=OD600), alpha=1, position=position_dodge(0), show.legend = F)+
+  geom_smooth(aes(group = OD600, colour=OD600), method = 'loess', size=0.8, linetype=1, alpha=0.2, show.legend = F, se = T, level = 0.95, span = 0.9)+
+  scale_fill_manual(values=mycol2)+
+  scale_color_manual(values=mycol2)+
+  facet_grid(nipagin2~OD600_factor)+
+  labs(x= "Days post-infection", y="Proportion of alive flies")+
+  coord_cartesian(ylim=c(0,1), xlim=c(0,8))+
+  scale_x_continuous(breaks = c(0:8))+
+  theme_bw(base_size = 12)+
+  theme(strip.text.x = element_markdown(angle = 0), legend.text = element_markdown())+
+  theme(axis.text.x = element_text(angle=0, vjust=0.5, hjust=0.5), panel.grid.major.y = element_line(color = "grey95", size = 0.4), panel.grid.major.x = element_blank(), panel.grid.minor = element_blank())
+
+plot_survival3
+
+#### plating
+data_CFU$OD600=as.factor(data_CFU$OD600)
+data_CFU_nochange=subset(data_CFU, data_CFU$vial_change=="no_change")
+
+plot_cfu3=ggplot(aes(x=time/24, y=(CFU_per_fly+1), fill=OD600, colour=OD600), data=data_CFU_nochange)+
+  stat_summary(fun.data = "mean_cl_boot", fun.args = list(conf.int = .95), geom="point", aes(group = OD600, colour=OD600), alpha=1, position=position_dodge(0), show.legend = F)+
+  geom_smooth(aes(group = OD600), method = 'loess', level=0.95, size=1, linetype=1, alpha=0.2, show.legend = F, se = T, span = 0.9, position=position_dodge(0.5))+
+  scale_fill_manual(values=mycol2)+
+  scale_color_manual(values=mycol2)+
+  labs(x= "Days post-infection", y="*P. entomophila* CFU per fly")+
+  coord_cartesian(ylim=c(1,6000000), xlim=c(0, 8), clip="on")+
+  facet_grid(nipagin2~OD600_factor)+
+  scale_x_continuous(breaks = c(0:8))+
+  scale_y_log10(breaks = c(1, 10, 100, 1000, 10000, 100000, 1000000), labels=scales::scientific)+
+  theme_bw(base_size = 12)+
+  theme(panel.grid.major.x = element_blank(), panel.grid.major.y = element_line(color = "grey95", size = 0.4), panel.grid.minor = element_blank())+
+  theme(axis.text.x = element_text(angle=0, vjust=0, hjust=0.5), axis.title.y = element_markdown(), legend.position = "right", legend.text = element_markdown(), strip.text.x = element_markdown(), strip.text.y = element_markdown(), legend.title = element_blank())
+
+plot_cfu3
+
+#### summary figure
+plot_survival3 = plot_survival3+
+  theme(panel.grid.major.x = element_blank(), panel.grid.major.y = element_line(color = "grey95", size = 0.4), panel.grid.minor = element_blank())+
+  theme(axis.text.x = element_text(size = 8, angle=0, vjust=0, hjust=0.5), axis.text.y = element_text(size = 8), axis.title.x = element_blank(), axis.title.y = element_markdown(size = 12, padding = margin(0, 0, 0, 0)), legend.position = "bottom", legend.text = element_markdown(size = 8), strip.text.x = element_markdown(size = 8), strip.text.y = element_blank(), strip.background.y = element_blank(), strip.background.x = element_blank(), legend.title = element_blank(), plot.margin = margin(t = 10, r = 10, b = 10, l = 10, unit = "pt"), panel.border = element_rect(colour = "grey20", fill=NA, size=0.4))
+
+
+plot_cfu3 = plot_cfu3+
+  theme(panel.grid.major.x = element_blank(), panel.grid.major.y = element_line(color = "grey95", size = 0.4), panel.grid.minor = element_blank())+
+  theme(axis.text.x = element_text(size = 8, angle=0, vjust=0, hjust=0.5), axis.text.y = element_text(size = 8), axis.title.x = element_markdown(size = 12, padding = margin(0, 0, 0, 0)), axis.title.y = element_markdown(size = 12, padding = margin(0, 0, 0, 0)), legend.position = "bottom", legend.text = element_markdown(size = 8), strip.text.x = element_blank(), strip.text.y = element_blank(), strip.background.y = element_blank(), strip.background.x = element_blank(), legend.title = element_blank(), plot.margin = margin(t = 10, r = 10, b = 10, l = 10, unit = "pt"), panel.border = element_rect(colour = "grey20", fill=NA, size=0.4))
+
+gA <- ggplotGrob(plot_survival3)
+gB <- ggplotGrob(plot_cfu3)
+
+pdf(height=6, width=5, file=here::here("plot_summary_nochange.pdf"))
+grid::grid.newpage()
+grid::grid.draw(rbind(gA, gB))
+dev.off()
+
+```
+# Analysis and plotting of offspring survival data
+
+Offspring survival plot
+
+```{r offspring plot}
+data_offspring$OD600=as.factor(data_offspring$OD600)
+data_offspring$change=as.factor(data_offspring$change)
+
+plot_offspring <- ggplot(data_offspring, aes(x=OD600_factor, y=1-(vials_with_dead_larvae/(vials_with_dead_larvae+more_than_5_pupae)), label=change))
+plot_offspring <- plot_offspring+
+  geom_dotplot(aes(group=interaction(nipagin, OD600_factor, change), fill = OD600_factor, colour = OD600_factor), alpha=1, dotsize=1, binaxis='y', binwidth = 0.05, position=position_dodge(0.5), stackdir='center', show.legend = F)+
+  stat_summary(fun=mean, geom="crossbar", aes(group=interaction(nipagin, OD600_factor)), colour="black", size=0.2, width = 0.5, alpha=1, show.legend = F)+
+  scale_color_manual(values=mycol2)+
+  scale_fill_manual(values=mycol2)+
+  guides(color = "none")+
+  facet_grid(nipagin2~.)+
+  theme_bw(base_size = 14)+
+  labs(x= "*P. entomophila* dose", y="Proportion of viable vials")+
+  coord_cartesian(ylim=c(0,1))+
+  theme_bw(base_size = 12)+
+  scale_y_continuous(breaks = c(0,0.25,0.5,0.75,1))+
+  theme(panel.grid.minor = element_blank())+
+  theme(axis.text.x = element_text(angle=90, vjust=0, hjust=0.95), axis.title.x = element_markdown(margin = margin(t=5)), legend.position = "right")
+
+plot_offspring
+
+pdf(height=4, width=3, file=here::here("Plot_offspring.pdf"))
+plot_offspring+
+  theme(panel.grid.major.x = element_blank(), panel.grid.major.y = element_line(color = "grey95", size = 0.4), panel.grid.minor = element_blank())+
+  theme(axis.text.x = element_text(size = 8, angle=90, vjust=0, hjust=0.95), axis.text.y = element_text(size = 8), axis.title.x = element_markdown(size = 12, padding = margin(5, 0, 0, 0)), axis.title.y = element_markdown(size = 12), strip.text.x = element_blank(), strip.text.y = element_blank(),  strip.background.x = element_blank(), strip.background.y = element_blank(), legend.title = element_text(), plot.margin = margin(t = 30, r = 22, b = 6, l = 6, unit = "pt"), panel.border = element_rect(colour = "grey20", fill=NA, size=0.4))
+dev.off()
+
+```
+
+Analysis of offspring survival and sanity check of the model
+
+```{r analysis offspring}
+data_offspring$OD600=as.numeric(data_offspring$OD600)
+mod=glmer(cbind(vials_with_dead_larvae, more_than_5_pupae)~nipagin+OD600+(1|change), data=data_offspring, family=binomial(link = "logit"))
+Anova(mod)
+
+dharma_check <- simulateResiduals(fittedModel = mod, plot = F)
+plot(dharma_check)
+
+
+```
