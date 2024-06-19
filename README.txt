@@ -11,7 +11,7 @@ General info
 	-A second folder is dedicated to the analysis of survival, Pe load and offspring survival
 	-A thrid folder is dedicated to the analysis of indirect transmission of Pe through the environement
 
-*data in .txt format are in the `data` folder, R script in Rmd format (including notes with some information about the analysis) in the `R` folder.
+*each folder contains data in .txt format, corresponding R script in Rmd format (including notes with some information about the analysis), and the knitted html document in markdown
 
 *The R code uses the `here` package (see also [here](https://github.com/jennybc/here_here)). This means all file paths are relative, and the analysis should work on your computer no questions asked, whether you use the R project or not, no code line to change as long as you download the entire repo.
 
