@@ -116,14 +116,14 @@ plot_cfu
 
 ###
 
-corCFU=cor.test(x=(1-(data_CFU2$alive_flies/data_CFU2$total_flies)), y=(data_CFU2$CFU_per_fly+1), method="kendall")
+corCFU=cor.test(x=(1-(data_CFU2$alive_flies/data_CFU2$total_flies)), y=(data_CFU2$CFU_per_fly+1), method="pearson")
 
 plot_regression=ggplot(aes(x=(1-(alive_flies/total_flies)), y=(CFU_per_fly+1), colour=infection2), data=data_CFU2)+
   geom_hline(yintercept=128000000, linetype='dotted', color = 'black')+
   geom_hline(yintercept=80, linetype='dotted', color = 'black')+
   annotate("text", x = 0.05, y = 128000000, label = "max.", vjust = -0.3, size= 3)+
   annotate("text", x = 0.05, y = 80, label = "min.", vjust = -0.3, size= 3)+
-  annotate("text", x = 0.7, y = 200, label = " Kendall's tau = 0.72 \n p-value = 0.008", vjust = -0.3, size= 2)+
+  annotate("text", x = 0.6, y = 80, label = "Pearson's coefficient = 0.71 \n p-value = 0.02", vjust = -0.3, size= 2)+
   geom_smooth(aes(group=1), method = 'lm', color="black", size=0.5, linetype=1, alpha=0.8, show.legend = F, se = FALSE)+
   geom_jitter(width = 0.02, height = 0.2, show.legend = F)+
   labs(x= "Proportion of dead flies", y="*P. entomophila* CFU/fly", colour ="Infection status")+

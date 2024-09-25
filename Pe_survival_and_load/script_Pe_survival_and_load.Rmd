@@ -40,13 +40,13 @@ here::here()
 Loading the data
 
 ```{r data-load}
-survival_data=read.table(here::here("data_survival.txt"),h=T, dec=".")
+survival_data=read.table(here::here("Pe_survival_and_load/Pe_survival_and_load/data_survival.txt"),h=T, dec=".")
 head(survival_data)
 
-plating_data=read.table(here::here("data_plating.txt"),h=T, dec=".")
+plating_data=read.table(here::here("Pe_survival_and_load/Pe_survival_and_load/data_plating.txt"),h=T, dec=".")
 head(plating_data)
 
-offspring_data=read.table(here::here("data_offspring.txt"),h=T, dec=".")
+offspring_data=read.table(here::here("Pe_survival_and_load/Pe_survival_and_load/data_offspring.txt"),h=T, dec=".")
 head(offspring_data)
 
 ```
@@ -99,8 +99,8 @@ mycol2=c("#808080","#8a6767","#b35f5f","#d24040","#f01010")
 Making a full Bayesian model for survival
 
 ```{r Bayesian modeling}
-if (file.exists(here::here("mod_brms_survival.Rdata"))) {
-  load(here::here("mod_brms_survival.Rdata"))
+if (file.exists(here::here("Pe_survival_and_load/mod_brms_survival.Rdata"))) {
+  load(here::here("Pe_survival_and_load/mod_brms_survival.Rdata"))
 } else {
 mod_brms_survival <- brm(
   bf(dead_flies | trials(total_flies) ~
@@ -117,7 +117,7 @@ mod_brms_survival <- brm(
 )
 save(
   list = c("mod_brms_survival"),
-  file = here::here("mod_brms_survival.Rdata")
+  file = here::here("Pe_survival_and_load/mod_brms_survival.Rdata")
 )
 }
 
@@ -158,7 +158,7 @@ Plot_survival_obsvsfitted <- Plot_survival_obsvsfitted+
 
 Plot_survival_obsvsfitted
 
-pdf(height=5, width=5, file=here::here("Plot_survival_obsvsfitted_finaltime.pdf"))
+pdf(height=5, width=5, file=here::here("Pe_survival_and_load/Plot_survival_obsvsfitted_finaltime.pdf"))
 Plot_survival_obsvsfitted +
   theme(strip.text.x = element_markdown(size = 8), strip.text.y = element_blank(), strip.background.y = element_blank(), legend.title = element_blank(), plot.margin = margin(t = 30, r = 22, b = 6, l = 6, unit = "pt"), panel.border = element_rect(colour = "grey20", fill=NA, size=0.4))
 dev.off()
@@ -188,10 +188,10 @@ table_by_OD <-flextable(fits_bayes_survival |>
 
 table_by_OD
 
-if(file.exists(here::here("survival_differences_to_control.docx")))
+if(file.exists(here::here("Pe_survival_and_load/survival_differences_to_control.docx")))
 {
 }else{
-    save_as_docx(table_by_OD, path = here::here("survival_differences_to_control.docx"))
+    save_as_docx(table_by_OD, path = here::here("Pe_survival_and_load/survival_differences_to_control.docx"))
   }
 
 
@@ -205,8 +205,8 @@ Making a full Bayesian model for P. entomophila load
 data_CFU_trimmed = data_CFU %>% drop_na(CFU_per_fly) %>% group_by(nipagin, OD600_factor, vial_change, replicate) %>% top_n(1, time)
 
 
-if (file.exists(here::here("mod_brms_cfu.Rdata"))) {
-  load(here::here("mod_brms_cfu.Rdata"))
+if (file.exists(here::here("Pe_survival_and_load/mod_brms_cfu.Rdata"))) {
+  load(here::here("Pe_survival_and_load/mod_brms_cfu.Rdata"))
 } else {
 mod_brms_cfu <- brm(
   bf(log(CFU_per_fly+1) ~ OD600_factor*nipagin*vial_change), 
@@ -220,7 +220,7 @@ mod_brms_cfu <- brm(
 )
 save(
   list = c("mod_brms_cfu"),
-  file = here::here("mod_brms_cfu.Rdata")
+  file = here::here("Pe_survival_and_load/mod_brms_cfu.Rdata")
 )
 }
 ```
@@ -258,7 +258,7 @@ labs(x= "*P. entomophila* dose", y="*P. entomophila* CFU per fly")+
 
 Plot_CFU_obsvsfitted
 
-pdf(height=5, width=5, file=here::here("Plot_CFU_obsvsfitted_finaltime.pdf"))
+pdf(height=5, width=5, file=here::here("Pe_survival_and_load/Plot_CFU_obsvsfitted_finaltime.pdf"))
 Plot_CFU_obsvsfitted +
   theme(strip.text.x = element_markdown(size = 8), strip.text.y = element_blank(), strip.background.y = element_blank(), legend.title = element_blank(), plot.margin = margin(t = 30, r = 22, b = 6, l = 6, unit = "pt"), panel.border = element_rect(colour = "grey20", fill=NA, size=0.4))
 dev.off()
@@ -303,10 +303,10 @@ table_CFU_by_OD <-flextable(fits_bayCFU |>
 table_CFU_by_OD
 
 
-if(file.exists(here::here("CFU_differences_to_control.docx")))
+if(file.exists(here::here("Pe_survival_and_load/CFU_differences_to_control.docx")))
 {
 }else{
-    save_as_docx(table_CFU_by_OD, path = here::here("CFU_differences_to_control.docx"))
+    save_as_docx(table_CFU_by_OD, path = here::here("Pe_survival_and_load/CFU_differences_to_control.docx"))
   }
 
 
@@ -341,10 +341,10 @@ table_CFU_by_change <-flextable(fits_bayCFU |>
 table_CFU_by_change
 
 
-if(file.exists(here::here("CFU_differences_to_nochange.docx")))
+if(file.exists(here::here("Pe_survival_and_load/CFU_differences_to_nochange.docx")))
 {
 }else{
-    save_as_docx(table_CFU_by_change, path = here::here("CFU_differences_to_nochange.docx"))
+    save_as_docx(table_CFU_by_change, path = here::here("Pe_survival_and_load/CFU_differences_to_nochange.docx"))
   }
 
 ```
@@ -404,7 +404,7 @@ plot_cfu2 = plot_cfu+
   theme(panel.grid.major.x = element_blank(), panel.grid.major.y = element_line(color = "grey95", size = 0.4), panel.grid.minor = element_blank())+
   theme(axis.text.x = element_text(size = 8, angle=0, vjust=0, hjust=0.5), axis.text.y = element_text(size = 8), axis.title.x = element_markdown(size = 12, padding = margin(5, 0, 0, 0)), axis.title.y = element_markdown(size = 12), legend.position = "bottom", legend.text = element_markdown(size = 8), strip.text.x = element_markdown(size = 8), strip.text.y = element_blank(), strip.background.y = element_blank(), strip.background.x = element_blank(), legend.title = element_blank(), plot.margin = margin(t = 30, r = 22, b = 6, l = 6, unit = "pt"), panel.border = element_rect(colour = "grey20", fill=NA, size=0.4))
 
-pdf(height=5, width=10, file=here::here("plot_summary.pdf"))
+pdf(height=5, width=10, file=here::here("Pe_survival_and_load/plot_summary.pdf"))
 grid.arrange(plot_survival2, plot_cfu2, nrow = 1, widths = c(1, 1))
 dev.off()
 
@@ -466,7 +466,7 @@ plot_cfu3 = plot_cfu3+
 gA <- ggplotGrob(plot_survival3)
 gB <- ggplotGrob(plot_cfu3)
 
-pdf(height=6, width=5, file=here::here("plot_summary_nochange.pdf"))
+pdf(height=6, width=5, file=here::here("Pe_survival_and_load/plot_summary_nochange.pdf"))
 grid::grid.newpage()
 grid::grid.draw(rbind(gA, gB))
 dev.off()
@@ -498,7 +498,7 @@ plot_offspring <- plot_offspring+
 
 plot_offspring
 
-pdf(height=4, width=3, file=here::here("Plot_offspring.pdf"))
+pdf(height=4, width=3, file=here::here("Pe_survival_and_load/Plot_offspring.pdf"))
 plot_offspring+
   theme(panel.grid.major.x = element_blank(), panel.grid.major.y = element_line(color = "grey95", size = 0.4), panel.grid.minor = element_blank())+
   theme(axis.text.x = element_text(size = 8, angle=90, vjust=0, hjust=0.95), axis.text.y = element_text(size = 8), axis.title.x = element_markdown(size = 12, padding = margin(5, 0, 0, 0)), axis.title.y = element_markdown(size = 12), strip.text.x = element_blank(), strip.text.y = element_blank(),  strip.background.x = element_blank(), strip.background.y = element_blank(), legend.title = element_text(), plot.margin = margin(t = 30, r = 22, b = 6, l = 6, unit = "pt"), panel.border = element_rect(colour = "grey20", fill=NA, size=0.4))

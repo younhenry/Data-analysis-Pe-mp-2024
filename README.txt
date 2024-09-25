@@ -13,6 +13,8 @@ General info
 
 *each folder contains data in .txt format, corresponding R script in Rmd format (including notes with some information about the analysis), and the knitted html document in markdown
 
+*IMPORTANT: all R codes use the `pacman` package to automatically install and load packages. It is practical, yet, some packages can only be installed separately (e.g. cmdstanr). Please install these packages before running the pacman script.
+
 *The R code uses the `here` package (see also [here](https://github.com/jennybc/here_here)). This means all file paths are relative, and the analysis should work on your computer no questions asked, whether you use the R project or not, no code line to change as long as you download the entire repo.
 
 *If you run the script for the first time, time-consuming outputs like models will be saved in the same folder as the script so you don't have to re-run them everytime.

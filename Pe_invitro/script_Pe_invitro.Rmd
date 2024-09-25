@@ -63,12 +63,26 @@ data1 = plating_data %>%
   arrange(species) %>%
   arrange(treatment)
 
-data2=subset(data1, data1$species=="*P. entomophila*"& data1$antifungal=="methylparaben")
+
+data2 = data1 %>%
+  mutate(CFU = ifelse(treatment == "antifungal" & time == 24, NA, CFU))
+data2=subset(data1, data1$species=="*P. entomophila*")
 data2=subset(data2, data2$antifungal=="methylparaben")
+data2 = data2 %>%
+  mutate(treatment = str_replace_all(treatment, "control", "Without mp")) %>%
+  mutate(treatment = str_replace_all(treatment, "antifungal", "With mp"))
+
+data3=subset(data1, data1$species=="*P. entomophila*")
+data3=subset(data3, data3$antifungal=="propionic acid")
+data3 = data3 %>%
+  mutate(treatment = str_replace_all(treatment, "control", "Without <br> propionic acid")) %>%
+  mutate(treatment = str_replace_all(treatment, "antifungal", "With <br> propionic acid"))
 
 
 mycol=c("#FFC107","#8A68D7", "#f01010")
-mycol2=c("#f01010")
+mycol2=c("#f01010", "#ffffff")
+mycol3=c("#f01010", "#f01010")
+
 
 ```
 
@@ -109,36 +123,109 @@ dev.off()
 
 ```
 
-Plot with only Pe
+# Plot with only Pe
+methylparaben
 
-```{r plating plot only Pe}
+```{r plating plot only Pe methylparaben}
 ##################################################################
 ### Plotting abundance dynamics for each vial (N=6 mean of two plated flies for each time)
 
-plot_cfu3=ggplot(aes(x=time, y=(CFU+1), fill=species, colour=species), data=data2)+
-  stat_summary(fun.data = "mean_cl_boot", fun.args = list(conf.int = .95), geom="point", aes(group = interaction(species,treatment),  shape = treatment), position=position_dodge(0), alpha=0.5, size = 3, show.legend = F)+
-  stat_summary(fun.data = "mean_cl_boot", fun.args = list(conf.int = .95), geom="linerange", aes(group = interaction(species,treatment)), position=position_dodge(0), alpha=1, size = 0.3, show.legend = F)+
+annotation_df1 <- data.frame(
+  treatment = c('With mp', 'Without mp'),
+  x = c(0.3, 0.3),
+  y = c(15000, 15000),
+  label = 'min.'
+)
+annotation_df2 <- data.frame(
+  treatment = c('With mp', 'Without mp'),
+  x = c(0.3, 0.3),
+  y = c(8000000000, 8000000000)
+)
+annotation_df3 <- data.frame(
+  treatment = 'With mp',
+  x = 2,
+  y = 1000,
+  label = 'below <br> detection'
+)
+
+plot_cfu3=ggplot(aes(x=time, y=(CFU+1), fill=treatment, color=treatment), data=data2)+
   stat_summary(fun.data = "mean_cl_boot", geom="line", aes(group = interaction(species,treatment), linetype = treatment), position=position_dodge(0), alpha=1, size = 0.3, show.legend = F)+
+  geom_dotplot(binaxis='y',binwidth = 0.30, stackdir='center', position=position_dodge(0), dotsize = 1, show.legend = F)+
   scale_fill_manual(values=mycol2)+
-  scale_color_manual(values=mycol2)+
-  scale_shape_manual(values=c(16,17))+
-  labs(x= "Time (hours)", y="CFU per mL")+
-  annotate("text", x = 0.65, y = 6666, label = "min.", vjust = -0.5, size = 2)+
-  geom_hline(yintercept = 6666, linetype='dotted', color = 'black', size = 0.3)+
+  scale_color_manual(values=mycol3)+
+  scale_linetype_manual(values=c(2,1))+
+  labs(title="", x= "Time (hours)", y="CFU per mL")+
+  geom_richtext(data = annotation_df1, aes(x = x, y = y, label = label), color = 'black', hjust = 0, vjust = 0.5, size = 2.5, show.legend = FALSE, fill = NA, label.color = NA) +
+  geom_richtext(data = annotation_df2, aes(x = x, y = y, label = treatment), color = 'black', hjust = 0, vjust = 1, size = 3, show.legend = FALSE, fill = NA, label.color = NA) +
+  geom_richtext(data = annotation_df3, aes(x = x, y = y, label = label), color = 'black', hjust = 0.5, vjust = 0.5, size = 2.5, show.legend = FALSE, fill = NA, label.color = NA) +
+  geom_hline(yintercept = 6666, linetype='dotted', color = 'black')+
   coord_cartesian(ylim = c(1,4000000000), clip="off")+
   scale_y_log10(breaks = c(1, 100, 10000, 1000000, 100000000), labels=scales::scientific)+
+  facet_grid(~treatment)+
   theme_bw(base_size = 12)+
   theme(panel.grid.major.x = element_blank(), panel.grid.major.y = element_line(color = "grey95", size = 0.4), panel.grid.minor = element_blank())+
   theme(axis.text.x = element_text(angle=0, vjust=0, hjust=0.5), axis.title.y = element_markdown(), legend.position = "right", legend.text = element_markdown(), strip.text.x = element_markdown(), strip.text.y = element_markdown(), legend.title = element_markdown())
 
 plot_cfu3
 
-pdf(height=3, width=2.5, file=here("plot_CFU_antifungal_Pe.pdf"))
+pdf(height=3, width=3.5, file=here("plot_CFU_methylparaben_Pe.pdf"))
 plot_cfu3+
   theme(panel.grid.major.x = element_blank(), panel.grid.major.y = element_line(color = "grey95", size = 0.4), panel.grid.minor = element_blank())+
-  theme(axis.text.x = element_text(size = 8, angle=0, vjust=0, hjust=0.5), axis.text.y = element_text(size = 8), axis.title.x = element_markdown(size = 10, padding = margin(5, 0, 0, 0)), axis.title.y = element_markdown(size = 10), legend.position = "right", legend.text = element_markdown(size = 8), strip.text.x = element_blank(), strip.background.x = element_blank(), strip.text.y = element_markdown(), strip.background.y = element_blank(), legend.title = element_blank(), plot.margin = margin(t = 30, r = 22, b = 6, l = 6, unit = "pt"), panel.border = element_rect(colour = "grey20", fill=NA, size=0.4))
+  theme(axis.text.x = element_text(size = 8, angle=0, vjust=0, hjust=0.5), axis.text.y = element_text(size = 8), axis.title.x = element_markdown(size = 12, padding = margin(5, 0, 0, 0)), axis.title.y = element_markdown(size = 12), legend.position = "right", legend.text = element_markdown(size = 8), strip.text.x = element_blank(), strip.background.x = element_blank(), strip.text.y = element_markdown(), strip.background.y = element_blank(), plot.title = element_markdown(size=8), legend.title = element_blank(), plot.margin = margin(t = 10, r = 22, b = 6, l = 6, unit = "pt"), panel.border = element_rect(colour = "grey20", fill=NA, size=0.4))
 dev.off()
 
+
+```
+propionic acid
+
+```{r plating plot only Pe propionic}
+##################################################################
+### Plotting abundance dynamics for each vial (N=6 mean of two plated flies for each time)
+
+annotation_df1 <- data.frame(
+  treatment = c('With <br> propionic acid', 'Without <br> propionic acid'),
+  x = c(0.3, 0.3),
+  y = c(15000, 15000),
+  label = 'min.'
+)
+annotation_df2 <- data.frame(
+  treatment = c('With <br> propionic acid', 'Without <br> propionic acid'),
+  x = c(0.3, 0.3),
+  y = c(8000000000, 8000000000)
+)
+annotation_df3 <- data.frame(
+  treatment = 'With <br> propionic acid',
+  x = 2,
+  y = 1000,
+  label = 'below <br> detection'
+)
+
+
+plot_cfu4=ggplot(aes(x=time, y=(CFU+1), fill=treatment, color=treatment), data=data3)+
+  stat_summary(fun.data = "mean_cl_boot", geom="line", aes(group = interaction(species,treatment), linetype = treatment), position=position_dodge(0), alpha=1, size = 0.3, show.legend = F)+
+  geom_dotplot(binaxis='y',binwidth = 0.30, stackdir='center', position=position_dodge(0), dotsize = 1, show.legend = F)+
+  scale_fill_manual(values=mycol2)+
+  scale_color_manual(values=mycol3)+
+  scale_linetype_manual(values=c(2,1))+
+  labs(title="", x= "Time (hours)", y="CFU per mL")+
+  geom_richtext(data = annotation_df1, aes(x = x, y = y, label = label), color = 'black', hjust = 0, vjust = 0.5, size = 2.5, show.legend = FALSE, fill = NA, label.color = NA) +
+  geom_richtext(data = annotation_df2, aes(x = x, y = y, label = treatment), color = 'black', hjust = 0, vjust = 1, size = 3, show.legend = FALSE, fill = NA, label.color = NA) +
+  geom_richtext(data = annotation_df3, aes(x = x, y = y, label = label), color = 'black', hjust = 0.5, vjust = 0.5, size = 2.5, show.legend = FALSE, fill = NA, label.color = NA) +
+  geom_hline(yintercept = 6666, linetype='dotted', color = 'black')+
+  coord_cartesian(ylim = c(1,4000000000), clip="off")+
+  scale_y_log10(breaks = c(1, 100, 10000, 1000000, 100000000), labels=scales::scientific)+
+  facet_grid(~treatment)+
+  theme_bw(base_size = 12)+
+  theme(panel.grid.major.x = element_blank(), panel.grid.major.y = element_line(color = "grey95", size = 0.4), panel.grid.minor = element_blank())+
+  theme(axis.text.x = element_text(angle=0, vjust=0, hjust=0.5), axis.title.y = element_markdown(), legend.position = "right", legend.text = element_markdown(), strip.text.x = element_markdown(), strip.text.y = element_markdown(), legend.title = element_markdown())
+
+plot_cfu4
+
+pdf(height=3, width=3.5, file=here("plot_CFU_propionic_Pe.pdf"))
+plot_cfu4+
+  theme(panel.grid.major.x = element_blank(), panel.grid.major.y = element_line(color = "grey95", size = 0.4), panel.grid.minor = element_blank())+
+  theme(axis.text.x = element_text(size = 8, angle=0, vjust=0, hjust=0.5), axis.text.y = element_text(size = 8), axis.title.x = element_markdown(size = 12, padding = margin(5, 0, 0, 0)), axis.title.y = element_markdown(size = 12), legend.position = "right", legend.text = element_markdown(size = 8), strip.text.x = element_blank(), strip.background.x = element_blank(), strip.text.y = element_markdown(), strip.background.y = element_blank(), plot.title = element_markdown(size=8), legend.title = element_blank(), plot.margin = margin(t = 10, r = 22, b = 6, l = 6, unit = "pt"), panel.border = element_rect(colour = "grey20", fill=NA, size=0.4))
+dev.off()
 
 ```
 
@@ -195,6 +282,7 @@ Plot_CFU_obsvsfitted=ggplot(aes(x=time, y=(CFU+1), fill=species, colour=species)
   scale_color_manual(values=mycol2)+
   scale_shape_manual(values=c(16,17))+
   labs(x= "Time (hours)", y="CFU per mL")+
+  facet_grid(~species)+
   annotate("text", x = 0.65, y = 6666, label = "min.", vjust = -0.5, size = 2)+
   geom_hline(yintercept = 6666, linetype='dotted', color = 'black', size = 0.3)+
   coord_cartesian(ylim = c(1,4000000000), clip="off")+
