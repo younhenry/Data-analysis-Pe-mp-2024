@@ -1,15 +1,17 @@
 This repository contains data and code needed to perform the analyses and figures in our manuscript:
 
-"Pseudomonas entomophila is highly pathogenic to fruit flies in the absence of methylparaben" (by Youn Henry, Berta Canal-Domènech, Christine La Mendola, Tadeusz J. Kawecki)
+"Standard ingredient of Drosophila medium reduces transmission and virulence of the gut pathogen Pseudomonas entomophila"
+by Youn Henry, Berta Canal-Domènech, Jaime Gonzalez, Christine La Mendola, Tadeusz J. Kawecki
 
 ####################################
 General info
 ####################################
 
-*analyses are separated into three folders, with one script each.
+*analyses are separated into four folders, with one script each.
 	-One folder is dedicated to the analysis of in vitro growth of bacteria in the presence of antifungal or not
 	-A second folder is dedicated to the analysis of survival, Pe load and offspring survival
 	-A thrid folder is dedicated to the analysis of indirect transmission of Pe through the environement
+	-A fourth folder is dedicated to the analysis of complementary experiments requested by reviewers
 
 *each folder contains data in .txt format, corresponding R script in Rmd format (including notes with some information about the analysis), and the knitted html document in markdown
 
@@ -19,4 +21,4 @@ General info
 
 *If you run the script for the first time, time-consuming outputs like models will be saved in the same folder as the script so you don't have to re-run them everytime.
 
-*If you don't need to run the code but simply look at it and its outputs, a knitted html document allows to visualize that without running anything.
+*If you don't need to run the code but simply look at it and its outputs, a knitted html document allows to visualize that without on a web browser running anything.

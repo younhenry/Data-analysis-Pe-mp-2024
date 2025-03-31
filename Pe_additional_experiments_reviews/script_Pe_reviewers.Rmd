@@ -1,0 +1,427 @@
+---
+title: "Additional experiments requested by reviewers"
+subtitle: "Testing MIC and MBC of methylparaben on P. entomophila, as well as P. entomophila transmission to fly food and to offspring eggs"
+date: ""
+chunk_output_type: inline
+output: html_document
+theme: yeti
+toc: yes
+toc_float: yes
+authors: "Youn"
+---
+  
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, message = FALSE, warning = FALSE)
+```
+
+
+# Packages
+
+```{r packages-loading}
+#[R v4.2.1]
+if(require("pacman")==T){
+  library("pacman")
+}else{
+  install.packages("pacman")
+}
+
+pacman::p_load(Rmisc, tidyverse, tidybayes, ggplot2, kableExtra, survival, survminer, performance, car, lme4, multcomp, emmeans, brms, cmdstanr, ggtext, relaimpo, gridExtra, DHARMa, ggrepel, flextable, gcplyr)
+
+library(here)      # CRAN v1.0.1
+## tool for workspace location management
+## automatically detects the workspace after loading the package if Rstudio was opened using the script file
+## load last to avoid conflicts
+here::here()
+
+```
+
+# Preprocess
+
+Loading the data
+
+```{r data-load}
+data_growth=read.table(here::here("data_growth.txt"),h=T, dec=".")
+head(data_growth)
+
+data_transfer=read.table(here::here("data_transfer.txt"),h=T, dec=".")
+head(data_transfer)
+
+data_food=read.table(here::here("data_food.txt"),h=T, dec=".")
+head(data_food)
+
+
+```
+
+Editing data tables for cleaner graphical outputs
+
+```{r data tinkering}
+
+order.pathogen=c("sham","Pe")
+order.mp=c("+mp","-mp")
+
+data_transfer = data_transfer |>
+  mutate(pathogen = factor(pathogen, levels = order.pathogen)) |>
+  mutate(medium2 = factor(medium2, levels = order.mp)) |>
+  arrange(pathogen) |>
+  arrange(medium2)
+
+data_food$timepoint2=data_food$timepoint
+data_food = data_food |>
+  mutate(pathogen2 = factor(pathogen2, levels = order.pathogen)) |>
+  mutate(medium = factor(medium, levels = order.mp)) |>
+  mutate(CFU_per_vial = round(CFU_per_vial)+1) |>
+  mutate(timepoint2 = str_replace_all(timepoint2, "20h", "0h after<br>fly removal")) |>
+  mutate(timepoint2 = str_replace_all(timepoint2, "88h", "68h after<br>fly removal")) |>
+  arrange(pathogen2) |>
+  arrange(medium)
+  
+
+mycol=c("#808080","#f01010")
+mycol2=c("#d9f0a3", "#addd8e", "#78c679", "#31a354", "#006837")
+
+myshapes=c(16,17)
+
+```
+
+# In vitro growth of Pe on methylparaben
+
+```{r growth curve plot and analysis}
+
+# Trimming away useless dilutions (too far away from MIC to show any effect)
+data_growth=subset(data_growth, data_growth$nipagin != 0.000002)
+data_growth$nipagin=as.factor(data_growth$nipagin)
+
+# making a vector "last_point" to show the mp concentrations at the tip of each line
+data_summary <- data_growth %>%
+  group_by(nipagin, time) %>%
+  summarize(OD_corrected = mean(OD_corrected), .groups = "drop")
+
+last_points <- data_summary %>%
+  group_by(nipagin) %>%
+  filter(time == max(time)) %>%
+  ungroup()
+
+# ploting
+plot_growth <- ggplot(data_growth, aes(time, OD_corrected))
+plot_growth <- plot_growth+
+    stat_summary(fun=mean, geom = "line", aes(group = nipagin, colour=nipagin, fill = nipagin), size=0.8, linetype=1, alpha=0.8, show.legend = F)+
+  stat_summary(fun.data="mean_cl_boot", fun="mean", fun.args = list(conf.int = .95), geom="pointrange", aes(group = nipagin, colour=nipagin, fill = nipagin), size= 2, fatten = 1, alpha=1, show.legend = F)+
+  scale_fill_manual(values=mycol2)+
+  scale_color_manual(values=mycol2)+
+  theme_bw(base_size = 12)+
+  labs(x= "Time (h)", y="OD<sub>600nm</sub>")+
+  coord_cartesian(ylim=c(0,1.4), xlim=c(0,34))+
+  scale_x_continuous(breaks = c(0, 5, 10, 15, 20))+
+  geom_text_repel(data = last_points, aes(x = time, y = OD_corrected, label = nipagin, colour = nipagin), nudge_x = 2, direction = "y", hjust = 0, size = 4, segment.linetype = "dotted", show.legend = FALSE)+
+  annotate("text", x = 23, y = 1.4, label = "Dose of mp (%)", size = 4, color = "black", hjust = 0) +
+  annotate("text", x = 27, y = 0, label = "(no viable cells \n after plating)", size = 2, color = "#006837", hjust = 0, vjust = 0.5) +
+  theme(strip.text.x = element_markdown(angle = 0), axis.text.x = element_text(angle=0, vjust=0.5, hjust=0.5), axis.title.y = element_markdown(), panel.grid.major.x = element_blank(), panel.grid.minor = element_blank(), legend.position = c(0.85, 0.4), legend.key.size = unit(0.2, "cm"), legend.background = element_blank(), legend.text = element_markdown())
+
+plot_growth
+
+
+pdf(height=4, width=4, file=here::here("plot_growth.pdf"))
+plot_growth
+dev.off()
+
+
+### analysis
+
+# excluding the non-growing concentration of mp to see differences between the ones growing
+data_growth_analysis=subset(data_growth, data_growth$nipagin != "0.2")
+
+# calculating the area under curve and other useful metrics to compare growth curves
+data_growth_analysis <- mutate(group_by(data_growth_analysis, nipagin, replicate),
+         deriv = calc_deriv(x = time, y = OD_corrected),
+         deriv_percap5 = calc_deriv(x = time, y = OD_corrected, 
+                                        percapita = TRUE, blank = 0,
+                                        window_width_n = 5, trans_y = "log"),
+         doub_time = doubling_time(y = deriv_percap5))
+
+data_growth_analysis_sum <- summarize(group_by(data_growth_analysis, nipagin, replicate),
+            max_percap = max_gc(deriv_percap5, na.rm = TRUE),
+            max_percap_time = extr_val(time, which_max_gc(deriv_percap5)),
+            doub_time = doubling_time(y = max_percap),
+            auc = auc(x = time, y = OD_corrected))
+
+# manipulation to group together all concentrations vs 0.02% (the concentration right after 0.2% -that corresponds to the MIC and MBC- and therefore the most likely to show signs of intermediate inhibition)
+data_growth_analysis_sum
+data_growth_analysis_sum$groups=c(rep("A", 24), rep ("B", 8))
+
+# model, model output, contrasts, and check for model assumptions
+mod=lm(auc~as.factor(groups), data=data_growth_analysis_sum)
+Anova(mod)
+
+emm1 = emmeans(mod, specs = pairwise ~ groups)
+emm1
+
+dharma_check <- simulateResiduals(fittedModel = mod, plot = F)
+plot(dharma_check)
+
+```
+
+# Offspring viability after indirect transmission of Pe from infected females 
+
+```{r offspring plot}
+plot_transfer <- ggplot(data_transfer, aes(x=medium2, y=100*(total_pupae/total_eggs), color=pathogen, fill=pathogen)) +
+  geom_dotplot(shape=16, binaxis='y', binwidth = 0.8, stackdir='center', dotsize=3, position=position_dodge(0.6), show.legend = T)+
+  stat_summary(aes(group=pathogen), 
+               position=position_dodge(0.6), 
+               fun.data="mean_cl_boot", 
+               geom="linerange", 
+               size=1,
+               color="black", 
+               show.legend=FALSE) +
+  stat_summary(aes(group=pathogen), 
+               position=position_dodge(0.6), 
+               fun="mean", 
+               geom="point", 
+               size=3,
+               color="black", 
+               show.legend=FALSE) +
+  scale_color_manual(values=mycol) +
+  scale_fill_manual(values=mycol) +
+  theme_bw(base_size=14) +
+  labs(x="", y="Egg viability (%)") +
+  coord_cartesian(ylim=c(0,100)) +
+  scale_y_continuous(breaks=c(0,25,50,75,100)) +
+  theme(panel.grid.minor=element_blank(),
+        axis.text.x=element_text(angle=0, vjust=0, hjust=0.5), 
+        axis.title.x=element_markdown(margin=margin(t=5)), 
+        legend.position="right")
+
+plot_transfer
+
+
+pdf(height=3, width=4, file=here::here("plot_transfer.pdf"))
+plot_transfer+
+  theme(panel.grid.major.x = element_blank(), panel.grid.major.y = element_line(color = "grey95", linewidth = 0.4), panel.grid.minor = element_blank())+
+  theme(axis.text.x = element_text(size = 10, angle=0, vjust=0, hjust=0.5), axis.text.y = element_text(size = 8), axis.title.x = element_markdown(size = 12, padding = margin(5, 0, 0, 0)), axis.title.y = element_markdown(size = 12), strip.text.x = element_blank(), strip.text.y = element_blank(),  strip.background.x = element_blank(), strip.background.y = element_blank(), legend.title = element_blank(), plot.margin = margin(t = 30, r = 22, b = 6, l = 6, unit = "pt"), panel.border = element_rect(colour = "grey20", fill=NA, size=0.4))
+dev.off()
+
+### Analysis
+
+# Test of analysis with frequentist approach. This is not working because one of the conditions is only composed of zeros (artificially adding 1% viability makes the model work perfectly, but we prefer to avoid this kind of trick)
+mod=glmer(cbind((total_eggs-total_pupae), total_pupae)~pathogen*medium2+(1|ID), data=data_transfer, family=binomial(link = "logit"))
+Anova(mod)
+
+dharma_check <- simulateResiduals(fittedModel = mod, plot = F)
+plot(dharma_check)
+
+emm1 = emmeans(mod, specs = pairwise ~ pathogen:medium2)
+emm1
+
+# Switching to a bayesian approach
+if (file.exists(here::here("mod_brms_transfer.Rdata"))) {
+  load(here::here("mod_brms_transfer.Rdata"))
+} else {
+mod_brms_transfer <- brm(
+  bf(total_pupae | trials(total_eggs) ~
+       pathogen * medium2 +(1|ID),
+     family = binomial()
+  ),
+  data = data_transfer,
+  prior=c(
+    set_prior("normal(0,1.5)",class="Intercept"),
+    set_prior("normal(0,1)",class="b")
+  ),
+  chains = 4, iter = 10000, seed = 1312,
+  backend = "cmdstanr"
+)
+save(
+  list = c("mod_brms_transfer"),
+  file = here::here("mod_brms_transfer.Rdata")
+)
+}
+
+pp_check(mod_brms_transfer)
+pp_check(mod_brms_transfer, "stat_2d")
+
+# Extracting the posteriors from the model
+fits_bayes_transfer <- data_transfer |> 
+  dplyr::select(ID, replicate, pathogen, OD, medium, medium2, total_eggs, total_pupae) |> 
+  mutate(total_eggs=1) |> 
+  distinct() |> 
+  add_epred_draws(mod_brms_transfer) |> 
+  ungroup()
+
+fits_bayes_transfer$pupae.epred=1-fits_bayes_transfer$.epred
+
+fits_bayes_transfer_unique= fits_bayes_transfer |>  
+    group_by(medium2, pathogen, .draw) |>  
+    summarise(pupae.epred = mean(pupae.epred), .groups = "drop")
+
+# Making nice looking tables with pairwise comparison of posteriors and credible intervals
+table_transfer <-flextable(fits_bayes_transfer_unique |>
+  mutate(.iteration = .draw) |>
+  group_by(medium2) |>
+  compare_levels(pupae.epred, by = pathogen, comparison = control, ignore_groups = ".row") |>
+  mean_hdi(pupae.epred) |> # here with mean, but it also works with mean_hdi, median_qi, mean_qi
+  mutate(.lower = round(.lower, digits = 2)) |>
+  mutate(.upper = round(.upper, digits = 2)) |>
+  mutate(pupae.epred = round(pupae.epred, digits = 2)) |>
+  dplyr::select(medium2, pathogen, pupae.epred, .lower, .upper) |>
+  rename("LowerCI" = ".lower", "Prediction" = "pupae.epred", "UpperCI" = ".upper", "Mp" = "medium2", "Infection" = "pathogen")) |>
+  color(~Prediction > 0 & LowerCI > 0, ~Prediction, color="#539c4e") |>
+  bold(~Prediction > 0 & LowerCI > 0, ~Prediction, bold=TRUE) |>
+  color(~Prediction < 0 & UpperCI < 0, ~Prediction, color="#ad2323") |>
+  bold(~Prediction < 0 & UpperCI < 0, ~Prediction, bold=TRUE) |>
+  bold(part="header", bold=TRUE) |>
+  set_table_properties(layout = "autofit") |>
+  bg(bg="lightgrey", part = "header") |>
+  fontsize(size = 9, part = "body")
+
+table_transfer
+
+table_transfer2 <-flextable(fits_bayes_transfer_unique |>
+  mutate(.iteration = .draw) |>
+  group_by(pathogen) |>
+  compare_levels(pupae.epred, by = medium2, comparison = control, ignore_groups = ".row") |>
+  mean_hdi(pupae.epred) |> ## here with mean, but it also works with mean_hdi, median_qi, mean_qi
+  mutate(.lower = round(.lower, digits = 2)) |>
+  mutate(.upper = round(.upper, digits = 2)) |>
+  mutate(pupae.epred = round(pupae.epred, digits = 2)) |>
+  dplyr::select(medium2, pathogen, pupae.epred, .lower, .upper) |>
+  rename("LowerCI" = ".lower", "Prediction" = "pupae.epred", "UpperCI" = ".upper", "Mp" = "medium2", "Infection" = "pathogen")) |>
+  color(~Prediction > 0 & LowerCI > 0, ~Prediction, color="#539c4e") |>
+  bold(~Prediction > 0 & LowerCI > 0, ~Prediction, bold=TRUE) |>
+  color(~Prediction < 0 & UpperCI < 0, ~Prediction, color="#ad2323") |>
+  bold(~Prediction < 0 & UpperCI < 0, ~Prediction, bold=TRUE) |>
+  bold(part="header", bold=TRUE) |>
+  set_table_properties(layout = "autofit") |>
+  bg(bg="lightgrey", part = "header") |>
+  fontsize(size = 9, part = "body")
+
+table_transfer2
+
+if(file.exists(here("table_transfer.docx")))
+{
+}else{
+    save_as_docx(table_transfer, path = here("table_transfer.docx"))
+}
+
+if(file.exists(here("table_transfer2.docx")))
+{
+}else{
+    save_as_docx(table_transfer2, path = here("table_transfer2.docx"))
+  }
+
+```
+
+# Presence and growth of Pe on fly food medium after contamination with infected flies
+
+```{r environment CFU plot}
+# Removing the sham control from the plot to make it more readable (all shams are at zero)
+data_food2=subset(data_food, data_food$pathogen2!="sham")
+
+# Plotting
+plot_CFU_food <- ggplot(data_food2, aes(x=timepoint2, y=CFU_per_vial, color=pathogen2, fill=pathogen2, shape=sex)) +
+  geom_point(aes(group=interaction(timepoint)), size=2, position=position_jitterdodge(jitter.width=0.4, dodge.width=0.8, seed=1312), show.legend = T)+
+  stat_summary(aes(group=interaction(timepoint)),
+               position=position_dodge(0.8), 
+               fun.data="mean_cl_boot", 
+               geom="linerange", 
+               size=1,
+               color="black", 
+               show.legend=FALSE) +
+  stat_summary(aes(group=interaction(timepoint)),
+               position=position_dodge(0.8), 
+               fun="mean", 
+               geom="point", 
+               size=3,
+               color="black", 
+               show.legend=FALSE) +
+  geom_hline(yintercept=333, linetype='dotted', color = 'black')+
+  annotate("text", x = 0.65, y = 333, label = "min.", vjust = -0.3, size= 3)+
+  scale_color_manual(values=c("#f01010")) +
+  scale_fill_manual(values=c("#f01010")) +
+  scale_shape_manual(values=myshapes) +
+  theme_bw(base_size=14) +
+  labs(x="", y="Pe CFU per vial") +
+  coord_cartesian(ylim=c(1,10000000000)) +
+  scale_y_log10(breaks = c(1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000, 1000000000), labels=scales::scientific)+
+  facet_grid(col= vars(medium))+
+  theme(panel.grid.minor=element_blank(),
+        axis.text.x=element_markdown(angle=0, vjust=0, hjust=0.5), 
+        axis.title.x=element_markdown(margin=margin(t=5)), 
+        legend.position="right")
+
+plot_CFU_food
+
+
+pdf(height=3, width=5, file=here::here("plot_CFU_food.pdf"))
+plot_CFU_food+
+  theme(panel.grid.major.x = element_blank(), panel.grid.major.y = element_line(color = "grey95", linewidth = 0.4), panel.grid.minor = element_blank())+
+  theme(axis.text.x = element_markdown(size = 8, angle=0, vjust=0, hjust=0.5), axis.text.y = element_text(size = 8), axis.title.x = element_markdown(size = 12, padding = margin(5, 0, 0, 0)), axis.title.y = element_markdown(size = 12), strip.text.x = element_text(), strip.text.y = element_text(),  strip.background.x = element_blank(), strip.background.y = element_blank(), legend.title = element_blank(), plot.margin = margin(t = 30, r = 22, b = 6, l = 6, unit = "pt"), panel.border = element_rect(colour = "grey20", fill=NA, linewidth=0.4))
+dev.off()
+
+### Analysis
+if (file.exists(here::here("mod_brms_food.Rdata"))) {
+  load(here::here("mod_brms_food.Rdata"))
+} else {
+mod_brms_food <- brm(
+bf(log(CFU_per_vial+1) ~ medium*pathogen2*timepoint+(1|sex)), 
+    data = data_food,
+    chains = 4, iter = 10000, warmup = 5000, seed = 1312,
+    prior = c(
+      set_prior("normal(0,1.5)",class="Intercept"),
+      set_prior("normal(0,5)", class = "b")
+    ),
+  backend = "cmdstanr"
+)
+save(
+  list = c("mod_brms_food"),
+  file = here::here("mod_brms_food.Rdata")
+)
+}
+
+# Quality control
+pp_check(mod_brms_food)
+pp_check(mod_brms_food, "stat_2d")
+
+# Extracting posteriors
+fits_bay1 <- data_food |> 
+  dplyr::select(medium, pathogen2, sex, timepoint) |> 
+  distinct()  |> 
+  add_epred_draws(mod_brms_food) |> 
+  ungroup()
+
+fits_bay1$exp.epred=exp(fits_bay1$.epred)
+
+# Ploting posteriors together with the real data
+Plot_CFU_obsvsfitted <- ggplot(data_food, aes(x=timepoint, y=CFU_per_vial, color=pathogen2, fill=pathogen2, shape=sex)) +
+    stat_eye(aes(x=timepoint, y=(exp(.epred)), group = interaction(timepoint,pathogen2)), normalize = "xy",.width = c(0.001, 0.95), shape = "", point_size = 1, point_color = "black", slab_fill = "black", slab_alpha = 0.2, interval_alpha = 0, data=fits_bay1, position=position_dodge(0.8),show.legend = F)+
+  geom_point(aes(group=interaction(timepoint,pathogen2)), size=2, position=position_jitterdodge(jitter.width=0.4, dodge.width=0.8, seed=1312), show.legend = T)+
+  stat_summary(aes(group=interaction(timepoint,pathogen2)),
+               position=position_dodge(0.8), 
+               fun.data="mean_cl_boot", 
+               geom="linerange", 
+               size=1,
+               color="black", 
+               show.legend=FALSE) +
+  stat_summary(aes(group=interaction(timepoint,pathogen2)),
+               position=position_dodge(0.8), 
+               fun="mean", 
+               geom="point", 
+               size=3,
+               color="black", 
+               show.legend=FALSE) +
+  geom_hline(yintercept=333, linetype='dotted', color = 'black')+
+  annotate("text", x = 0.65, y = 333, label = "min.", vjust = -0.3, size= 3)+
+  scale_color_manual(values=mycol) +
+  scale_fill_manual(values=mycol) +
+  scale_shape_manual(values=myshapes) +
+  theme_bw(base_size=14) +
+  labs(x="", y="Pe CFU per vial") +
+  coord_cartesian(ylim=c(1,1000000000)) +
+  scale_y_log10(breaks = c(1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000), labels=scales::scientific)+
+  facet_grid(col= vars(medium))+
+  theme(panel.grid.minor=element_blank(),
+        axis.text.x=element_text(angle=0, vjust=0, hjust=0.5), 
+        axis.title.x=element_markdown(margin=margin(t=5)), 
+        legend.position="right")
+
+Plot_CFU_obsvsfitted
+
+```
